@@ -1,11 +1,12 @@
+# app.py
+
 import os
 import sys
 import streamlit as st
 
 # ------------------------------------------------------------------
-# Import retrieval service from src/
+# Locate and import from src/
 # ------------------------------------------------------------------
-
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 SRC_DIR = os.path.join(BASE_DIR, "src")
 
@@ -14,52 +15,102 @@ if SRC_DIR not in sys.path:
 
 from retrieval_service import load_resources, answer_query
 
-# Load TF-IDF index and KB once at startup
+# Load TF-IDF index + KB once
 load_resources()
 
 # ------------------------------------------------------------------
 # Streamlit page configuration
 # ------------------------------------------------------------------
-
 st.set_page_config(
-    page_title="Student Affairs Self-Service Assistant",
+    page_title="Condors Ask!",
     layout="wide"
 )
 
-st.title("Student Affairs Self-Service Assistant (Dry Run -2)")
-
+# Optional small style tweak so content doesn’t stretch edge-to-edge
 st.markdown(
     """
-This prototype uses a TF-IDF based retrieval model over Conestoga Student Affairs
-resources (orientation, career centre, student rights, etc.).
-
-Type a question below and the system will retrieve the most relevant FAQ and show its answer.
-"""
+    <style>
+        .main {
+            padding-left: 5rem;
+            padding-right: 5rem;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True,
 )
 
 # ------------------------------------------------------------------
-# Main input area
+# Centre layout: put everything in the middle column
 # ------------------------------------------------------------------
+left, center, right = st.columns([1, 2, 1])
 
-query = st.text_input("Ask your question:", placeholder="Example: How do I access Wi-Fi on campus?")
+with center:
+    # Header
+    st.markdown("### 🦅 Condors Ask!")
+    st.caption(
+        "A TF-IDF powered Student Affairs assistant for Conestoga students. "
+        "Ask about orientation, student success services, career centre, or student rights."
+    )
 
-if st.button("Get Answer") or query:
-    query = query.strip()
-    if not query:
-        st.warning("Please enter a question.")
-    else:
-        result = answer_query(query, k=3)
+    # Toggle for debugging view of matched FAQ
+    show_debug = st.toggle(
+        "Show matched FAQ details (for assignment / debugging)",
+        value=False,
+        help="When ON, you’ll see the matched FAQ question, similarity score, and source."
+    )
 
-        st.subheader("Answer")
-        st.write(result["answer"])
+    # Main input
+    user_input = st.text_input(
+        "Ask your question:",
+        placeholder="Example: what is the purpose of my ONE Card? Do I need to pick it up during orientation?",
+        key="user_query",
+    )
 
-        st.markdown("---")
-        st.subheader("Matched Knowledge Base Entry")
-        st.write(f"Question: {result['matched_question']}")
-        st.write(f"Similarity score: {result['similarity']:.3f}")
+    get_answer = st.button("Get Answer", type="primary")
 
-        if result.get("source_url"):
-            st.write(f"Source: {result['source_type']}")
-            st.markdown(f"[Open source page]({result['source_url']})")
+    # ------------------------------------------------------------------
+    # Handle query
+    # ------------------------------------------------------------------
+    if get_answer or user_input:
+        query = user_input.strip()
+
+        if not query:
+            st.warning("Please enter a question.")
         else:
-            st.write(f"Source: {result['source_type']}")
+            result = answer_query(query, k=3)
+
+            st.subheader("Answer")
+            st.write(result["answer"])
+
+            mode = result.get("mode", "direct")
+
+            # If escalation, show extra notice bar
+            if mode == "escalate":
+                st.warning(
+                    "This looks like something that should be handled by a real person. "
+                    "Please use the portal link in the answer above to reach appropriate support."
+                )
+
+            # If invalid, we just show the answer text – nothing else.
+
+            # ------------------------------------------------------------------
+            # Debug / assignment section – only when toggle is ON
+            # ------------------------------------------------------------------
+            if show_debug and mode in {"direct", "low_confidence"}:
+                st.markdown("---")
+                if mode == "direct":
+                    st.subheader("Matched Knowledge Base Entry")
+                else:  # low_confidence
+                    st.subheader("Closest FAQ Match (for reference)")
+
+                st.write(f"**Question:** {result['matched_question']}")
+                st.write(f"**Similarity score:** {result['similarity']:.3f}")
+
+                source_type = result.get("source_type", "")
+                source_url = result.get("source_url", "")
+
+                if source_url:
+                    st.write(f"**Source:** {source_type}")
+                    st.markdown(f"[Open source page]({source_url})")
+                elif source_type:
+                    st.write(f"**Source:** {source_type}")
