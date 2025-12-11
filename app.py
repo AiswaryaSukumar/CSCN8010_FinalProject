@@ -1,116 +1,121 @@
-# app.py
-
-import os
-import sys
 import streamlit as st
+from src.retrieval_service import load_resources, answer_query
+from src.translation import translate_text
+import time
 
-# ------------------------------------------------------------------
-# Locate and import from src/
-# ------------------------------------------------------------------
-BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-SRC_DIR = os.path.join(BASE_DIR, "src")
-
-if SRC_DIR not in sys.path:
-    sys.path.append(SRC_DIR)
-
-from retrieval_service import load_resources, answer_query
-
-# Load TF-IDF index + KB once
+# Load models
 load_resources()
 
-# ------------------------------------------------------------------
-# Streamlit page configuration
-# ------------------------------------------------------------------
-st.set_page_config(
-    page_title="Condors Ask!",
-    layout="wide"
-)
+# Page setup
+st.set_page_config(page_title="Condors Ask!", layout="wide")
 
-# Optional small style tweak so content doesn’t stretch edge-to-edge
-st.markdown(
-    """
-    <style>
-        .main {
-            padding-left: 5rem;
-            padding-right: 5rem;
-        }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+# -------------------------------------------------------------------
+# CSS Styles
+# -------------------------------------------------------------------
+st.markdown("""
+<style>
+.chat-window {
+    height: 70vh;
+    overflow-y: auto;
+    padding: 1rem;
+    border-radius: 12px;
+    background: #111;
+    border: 1px solid #333;
+}
+.chat-bubble-user {
+    background: #0056ff;
+    color: white;
+    padding: 12px 16px;
+    border-radius: 16px 16px 0 16px;
+    margin: 8px 0;
+    max-width: 70%;
+    float: right;
+    clear: both;
+}
+.chat-bubble-bot {
+    background: #1e1f24;
+    color: #e8e8e8;
+    padding: 12px 16px;
+    border-radius: 16px 16px 16px 0;
+    margin: 8px 0;
+    max-width: 70%;
+    float: left;
+    clear: both;
+}
+</style>
+""", unsafe_allow_html=True)
 
-# ------------------------------------------------------------------
-# Centre layout: put everything in the middle column
-# ------------------------------------------------------------------
-left, center, right = st.columns([1, 2, 1])
+# -------------------------------------------------------------------
+# SESSION STATE
+# -------------------------------------------------------------------
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
 
-with center:
-    # Header
-    st.markdown("### 🦅 Condors Ask!")
-    st.caption(
-        "A TF-IDF powered Student Affairs assistant for Conestoga students. "
-        "Ask about orientation, student success services, career centre, or student rights."
-    )
+# -------------------------------------------------------------------
+# Sidebar Language Selector
+# -------------------------------------------------------------------
+st.sidebar.title("🌐 Language")
 
-    # Toggle for debugging view of matched FAQ
-    show_debug = st.toggle(
-        "Show matched FAQ details (for assignment / debugging)",
-        value=False,
-        help="When ON, you’ll see the matched FAQ question, similarity score, and source."
-    )
+language = st.sidebar.selectbox("Select language:", ["English", "French", "Hindi"])
+lang_code = {"English": "en", "French": "fr", "Hindi": "hi"}[language]
 
-    # Main input
-    user_input = st.text_input(
-        "Ask your question:",
-        placeholder="Example: what is the purpose of my ONE Card? Do I need to pick it up during orientation?",
-        key="user_query",
-    )
+# Layout
+chat_col, news_col = st.columns([3, 1])
 
-    get_answer = st.button("Get Answer", type="primary")
+# -------------------------------------------------------------------
+# CHAT COLUMN
+# -------------------------------------------------------------------
+with chat_col:
 
-    # ------------------------------------------------------------------
-    # Handle query
-    # ------------------------------------------------------------------
-    if get_answer or user_input:
-        query = user_input.strip()
+    st.markdown("<h2>🦅 Condors Ask!</h2>", unsafe_allow_html=True)
 
-        if not query:
-            st.warning("Please enter a question.")
+    # Chat window container
+   # st.markdown('<div class="chat-window">', unsafe_allow_html=True)
+
+    for sender, msg in st.session_state.chat_history:
+        if sender == "user":
+            st.markdown(f'<div class="chat-bubble-user">{msg}</div>', unsafe_allow_html=True)
         else:
-            result = answer_query(query, k=3)
+            st.markdown(f'<div class="chat-bubble-bot">{msg}</div>', unsafe_allow_html=True)
 
-            st.subheader("Answer")
-            st.write(result["answer"])
+    #st.markdown('</div>', unsafe_allow_html=True)
 
-            mode = result.get("mode", "direct")
+    # User input
+    user_message = st.text_input("Type your message:", value="", placeholder="Ask me anything...")
 
-            # If escalation, show extra notice bar
-            if mode == "escalate":
-                st.warning(
-                    "This looks like something that should be handled by a real person. "
-                    "Please use the portal link in the answer above to reach appropriate support."
-                )
+    send_btn = st.button("Send")
 
-            # If invalid, we just show the answer text – nothing else.
+    if send_btn and user_message.strip() != "":
+        st.session_state.chat_history.append(("user", user_message))
+        st.session_state.chat_history.append(("bot", "typing..."))
+        st.rerun()   # <-- FIXED HERE
 
-            # ------------------------------------------------------------------
-            # Debug / assignment section – only when toggle is ON
-            # ------------------------------------------------------------------
-            if show_debug and mode in {"direct", "low_confidence"}:
-                st.markdown("---")
-                if mode == "direct":
-                    st.subheader("Matched Knowledge Base Entry")
-                else:  # low_confidence
-                    st.subheader("Closest FAQ Match (for reference)")
+    # Process typing placeholder AFTER rerun
+    if st.session_state.chat_history and st.session_state.chat_history[-1][1] == "typing...":
+        last_user_message = st.session_state.chat_history[-2][1]
 
-                st.write(f"**Question:** {result['matched_question']}")
-                st.write(f"**Similarity score:** {result['similarity']:.3f}")
+        time.sleep(0.2)
+        result = answer_query(last_user_message)
+        reply = translate_text(result["answer"], lang_code)
 
-                source_type = result.get("source_type", "")
-                source_url = result.get("source_url", "")
+        st.session_state.chat_history[-1] = ("bot", reply)
+        st.rerun()   # <-- FIXED HERE
 
-                if source_url:
-                    st.write(f"**Source:** {source_type}")
-                    st.markdown(f"[Open source page]({source_url})")
-                elif source_type:
-                    st.write(f"**Source:** {source_type}")
+
+# -------------------------------------------------------------------
+# NEWS COLUMN
+# -------------------------------------------------------------------
+with news_col:
+    st.markdown("<h4>📢 News & Updates</h4>", unsafe_allow_html=True)
+
+    news_items = [
+        {"title": "Campus Winter Hours Updated", "link": "#"},
+        {"title": "New Mental Health Services Now Open", "link": "#"},
+        {"title": "Career Center Job Fair – Feb 12", "link": "#"}
+    ]
+
+    for item in news_items:
+        st.markdown(
+            f"<p><a href='{item['link']}' style='color:#4A53E8;text-decoration:none;'>{item['title']}</a></p>",
+            unsafe_allow_html=True
+        )
