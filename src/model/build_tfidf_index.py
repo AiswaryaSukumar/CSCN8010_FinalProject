@@ -1,105 +1,60 @@
-"""
-BUILD & SAVE TF-IDF INDEX FOR STUDENT AFFAIRS CHATBOT
-
-WHAT THIS SCRIPT DOES (OFFLINE STEP):
-1. Loads unified knowledge base CSV
-2. Builds TF-IDF vectors using FAQ QUESTIONS ONLY
-3. Saves vectorizer + matrix to disk
-
-RUN THIS SCRIPT:
-- ONCE initially
-- AGAIN only if knowledge base changes
-
-DO NOT run this from Streamlit or app.py
-"""
+# src/model/build_tfidf_index.py
 
 import os
-import pandas as pd
-import numpy as np
+from pathlib import Path
+
 import joblib
-from sklearn.feature_extraction.text import TfidfVectorizer
+import pandas as pd
 from scipy import sparse
+from src.dataCleaningProcessing.tokenizer_utils import simple_tokenizer
+from sklearn.feature_extraction.text import TfidfVectorizer
 
 
-# ---------------------------------------------------------
-# CONFIGURATION (absolute project paths)
-# ---------------------------------------------------------
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DATA_PATH = PROJECT_ROOT / "data" / "student_affairs_knowledge_base.csv"
+MODELS_DIR = PROJECT_ROOT / "models"
 
-# src/model/build_tfidf_index.py → project root
-BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+# NEW NAMES (v2)
+VECTORIZER_PATH = MODELS_DIR / "tfidf_vectorizer_v2.pkl"
+MATRIX_PATH = MODELS_DIR / "kb_tfidf_matrix_v2.npz"
 
-DATA_PATH = os.path.join(BASE_DIR, "data", "student_affairs_knowledge_base.csv")
-MODELS_DIR = os.path.join(BASE_DIR, "models")
+os.makedirs(MODELS_DIR, exist_ok=True)
 
-VECTORIZER_PATH = os.path.join(MODELS_DIR, "tfidf_vectorizer.pkl")
-MATRIX_PATH = os.path.join(MODELS_DIR, "kb_tfidf_matrix.npz")
+print("PROJECT_ROOT :", PROJECT_ROOT)
+print("DATA_PATH    :", DATA_PATH)
+print("MODELS_DIR   :", MODELS_DIR)
 
 
-# ---------------------------------------------------------
-# MAIN BUILD FUNCTION
-# ---------------------------------------------------------
+def main():
+    if not DATA_PATH.exists():
+        raise FileNotFoundError(f"KB CSV not found at: {DATA_PATH}")
 
-def build_tfidf_index():
+    df = pd.read_csv(DATA_PATH)
+    print("KB shape:", df.shape)
 
-    print("Project root :", BASE_DIR)
-    print("KB path      :", DATA_PATH)
-    print("Models dir   :", MODELS_DIR)
+    if "question" not in df.columns or "answer" not in df.columns:
+        raise ValueError("CSV must have 'question' and 'answer' columns")
 
-    os.makedirs(MODELS_DIR, exist_ok=True)
+    docs = (df["question"].fillna("") + " " + df["answer"].fillna("")).tolist()
 
-    # -----------------------------------------------------
-    # Load Knowledge Base
-    # -----------------------------------------------------
-    if not os.path.exists(DATA_PATH):
-        raise FileNotFoundError(f"KB CSV not found at {DATA_PATH}")
-
-    kb_df = pd.read_csv(DATA_PATH)
-
-    expected_cols = {"question", "answer", "source_url", "source_type"}
-    missing = expected_cols - set(kb_df.columns)
-    if missing:
-        raise ValueError(f"KB missing columns: {missing}")
-
-    print("KB loaded. Rows:", len(kb_df))
-
-    # -----------------------------------------------------
-    # Prepare text (QUESTION ONLY)
-    # -----------------------------------------------------
-    kb_df["question"] = kb_df["question"].fillna("").astype(str).str.strip()
-    kb_df = kb_df[kb_df["question"] != ""]
-
-    documents = kb_df["question"].tolist()
-
-    print("Documents used for indexing:", len(documents))
-
-    # -----------------------------------------------------
-    # Build TF-IDF
-    # -----------------------------------------------------
-    tfidf_vectorizer = TfidfVectorizer(
+    vectorizer = TfidfVectorizer(
+        ngram_range=(1, 2),
+        lowercase=True,
         stop_words="english",
-        ngram_range=(1, 2)
+        max_df=0.8,
+        min_df=1,
     )
 
-    tfidf_matrix = tfidf_vectorizer.fit_transform(documents)
+    print(f"Fitting TF-IDF on {len(docs)} documents...")
+    tfidf_matrix = vectorizer.fit_transform(docs)
+    print("TF-IDF matrix shape:", tfidf_matrix.shape)
 
-    print("TF-IDF built")
-    print(" - Documents :", tfidf_matrix.shape[0])
-    print(" - Vocabulary:", tfidf_matrix.shape[1])
+    joblib.dump(vectorizer, VECTORIZER_PATH)
+    print("Saved vectorizer to:", VECTORIZER_PATH)
 
-    # -----------------------------------------------------
-    # Save artifacts
-    # -----------------------------------------------------
-    joblib.dump(tfidf_vectorizer, VECTORIZER_PATH)
     sparse.save_npz(MATRIX_PATH, tfidf_matrix)
+    print("Saved TF-IDF matrix to:", MATRIX_PATH)
 
-    print("Saved vectorizer →", VECTORIZER_PATH)
-    print("Saved matrix     →", MATRIX_PATH)
-    print("\nDONE: Retrieval index persisted to disk.")
-
-
-# ---------------------------------------------------------
-# ENTRY POINT
-# ---------------------------------------------------------
 
 if __name__ == "__main__":
-    build_tfidf_index()
+    main()

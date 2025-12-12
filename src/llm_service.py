@@ -1,7 +1,5 @@
-# -------------------------------------------------------------------
 # llm_service.py
-# Patched Version – With Error Handling, Logging, Safe RAG Execution
-# -------------------------------------------------------------------
+# Patched Version – With Error Handling, Logging, Safe RAG Execution + Small Talk
 
 import logging
 from typing import List
@@ -9,6 +7,7 @@ import pandas as pd
 from openai import OpenAI
 import os
 from dotenv import load_dotenv
+
 load_dotenv()  # looks for .env in current or parent dirs
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
@@ -21,7 +20,11 @@ ADVISOR_BOOKING_LINK = "https://successportal.conestogac.on.ca"
 # ================================================================
 # Build Context from Top-K FAQs
 # ================================================================
-def build_faq_context(faq_rows: pd.DataFrame, max_chunks: int = 3) -> str:
+def build_faq_context(faq_rows: pd.DataFrame, max_chunks: int = 5) -> str:
+    """
+    Convert top-k FAQ rows into a text context block for the LLM.
+    Each block contains: source, question, answer.
+    """
     context_parts: List[str] = []
 
     try:
@@ -29,6 +32,7 @@ def build_faq_context(faq_rows: pd.DataFrame, max_chunks: int = 3) -> str:
             q = str(row["question"]).strip()
             a = str(row["answer"]).strip()
             source = str(row.get("source_type", ""))
+
             context_parts.append(
                 f"FAQ #{i}\n"
                 f"source: {source}\n"
@@ -49,8 +53,12 @@ def build_faq_context(faq_rows: pd.DataFrame, max_chunks: int = 3) -> str:
 # LLM Answer Generation with Strict RAG
 # ================================================================
 def generate_llm_answer(query: str, faq_rows: pd.DataFrame) -> str:
+    """
+    Use OpenAI to generate an answer based ONLY on the provided FAQ context.
+    If context is weak, the LLM should say it is not fully sure and recommend advisor.
+    """
 
-    context = build_faq_context(faq_rows, max_chunks=3)
+    context = build_faq_context(faq_rows, max_chunks=5)
 
     system_prompt = f"""
 You are a virtual Student Success Assistant for Conestoga College.
@@ -93,7 +101,7 @@ and recommend booking a Student Success Advisor:
             model="gpt-4.1-mini",
             messages=[
                 {"role": "system", "content": system_prompt.strip()},
-                {"role": "user",    "content": user_prompt.strip()},
+                {"role": "user", "content": user_prompt.strip()},
             ],
             temperature=0.2,
             max_tokens=400,
@@ -108,4 +116,89 @@ and recommend booking a Student Success Advisor:
             "I'm having trouble generating a complete response right now. "
             "Please try again shortly or contact a Student Success Advisor:\n"
             f"{ADVISOR_BOOKING_LINK}"
+        )
+
+
+# ================================================================
+# Small talk reply generator
+# ================================================================
+def generate_small_talk_reply(user_text: str) -> str:
+    """
+    Use LLM to respond to greetings / chit-chat in a short, friendly way.
+    No policy details here; just introduce the bot and invite a question.
+    """
+
+    system_prompt = """
+You are a friendly Student Success Assistant at Conestoga College.
+Your job in this mode is ONLY:
+- Greet the student warmly.
+- Briefly introduce yourself (virtual assistant for student services).
+- Invite them to ask a question about orientation, student support,
+  academic help, or campus resources.
+Keep the reply short (1–3 sentences).
+"""
+
+    try:
+        resp = client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=[
+                {"role": "system", "content": system_prompt.strip()},
+                {"role": "user", "content": user_text},
+            ],
+            temperature=0.6,
+            max_tokens=80,
+        )
+        answer = resp.choices[0].message.content.strip()
+        logger.info(f"[LLM Small Talk Reply Generated] Text: {user_text}")
+        return answer
+
+    except Exception as e:
+        logger.error(f"Small talk generation failed: {e}")
+        # Safe fallback if API fails
+        return (
+            "Hi! I'm your Student Success Assistant at Conestoga. "
+            "You can ask me about orientation, student support, academic help, or campus services."
+        )
+def generate_supportive_response(query: str) -> str:
+    system_prompt = f"""
+You are a gentle, supportive Student Success Assistant at Conestoga College.
+The student is experiencing stress, anxiety, or sadness but is not in immediate crisis.
+
+Your job:
+- Acknowledge their feelings with empathy.
+- Offer simple, practical suggestions (study tips, time management, campus supports).
+- Encourage them to reach out to campus resources.
+- Recommend booking a Student Success Advisor at:
+  {ADVISOR_BOOKING_LINK}
+
+Do NOT give medical, legal, or immigration advice.
+If the message sounds like self-harm or danger, tell them to seek emergency help.
+Keep answers short, kind, and non-judgmental.
+"""
+
+    user_prompt = f"""
+Student message:
+{query}
+
+Write a short, supportive reply.
+Explicitly mention they can book a Student Success Advisor here: {ADVISOR_BOOKING_LINK}
+"""
+
+    try:
+        resp = client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=[
+                {"role": "system", "content": system_prompt.strip()},
+                {"role": "user", "content": user_prompt.strip()},
+            ],
+            temperature=0.4,
+            max_tokens=300,
+        )
+        return resp.choices[0].message.content.strip()
+    except Exception as e:
+        logger.error(f"Supportive response LLM failed: {e}")
+        return (
+            "I'm really sorry that you're feeling this way. "
+            "It might help to talk to someone at the college who can support you. "
+            f"Please consider booking a Student Success Advisor here: {ADVISOR_BOOKING_LINK}"
         )

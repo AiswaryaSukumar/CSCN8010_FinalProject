@@ -1,0 +1,118 @@
+text,label
+hello,small_talk
+hi,small_talk
+good morning,small_talk
+good night,small_talk
+thank you,small_talk
+thanks,small_talk
+you're welcome,small_talk
+ok,small_talk
+okay,small_talk
+sure,small_talk
+got it,small_talk
+testing,small_talk
+just looking,small_talk
+nothing right now,small_talk
+no questions,small_talk
+perfect,small_talk
+cool,small_talk
+bye,small_talk
+see you,small_talk
+goodbye,small_talk
+how are you?,small_talk
+hi again,small_talk
+how do i book an appointment with a student success advisor,student_affairs
+where can i find academic advising at conestoga,student_affairs
+how can i pay my tuition fees online,student_affairs
+what is the last date to drop a course without penalty,student_affairs
+how do i register for winter semester courses,student_affairs
+where can i see my class timetable,student_affairs
+how do i get a confirmation of enrollment letter,student_affairs
+how can i request a transcript from the college,student_affairs
+who should i contact about my co op term,student_affairs
+what support is available for international students,student_affairs
+how do i book an appointment with the career center,student_affairs
+where can i get help with resume and cover letter,student_affairs
+how can i access counseling services on campus,student_affairs
+what do i do if i am struggling in a course,student_affairs
+how can i talk to someone about academic accommodations,student_affairs
+where can i find information about scholarships and bursaries,student_affairs
+how do i reset my student portal password,student_affairs
+how can i appeal a grade i think is unfair,student_affairs
+what is the process to withdraw from a program,student_affairs
+where can i find information about student health insurance,student_affairs
+how do i get help with time management and study skills,student_affairs
+who do i contact if i experience harassment on campus,student_affairs
+how can i report a concern about another student,student_affairs
+where can i find details about orientation events,student_affairs
+how do i connect with peer mentors at conestoga,student_affairs
+what services does the library provide for research help,student_affairs
+how can i book a study room in the library,student_affairs
+where can i learn about work permits for co op positions,student_affairs
+how do i update my address in the student system,student_affairs
+what happens if i miss a tuition payment deadline,student_affairs
+how do i request a deferral for my admission,student_affairs
+where can i see important academic dates and deadlines,student_affairs
+how can i contact the registrar s office,student_affairs
+what student support is available for exam anxiety,student_affairs
+how do i access online tutoring services,student_affairs
+what is the capital of france,out_of_scope
+who won the world cup in 2018,out_of_scope
+tell me a joke,out_of_scope
+what is the weather like today,out_of_scope
+explain quantum physics to me,out_of_scope
+how do i cook biryani,out_of_scope
+give me a gym workout plan,out_of_scope
+how can i invest in cryptocurrency,out_of_scope
+tell me about hollywood movies,out_of_scope
+who is the prime minister of india,out_of_scope
+what is the stock price of apple,out_of_scope
+how to become rich quickly,out_of_scope
+what phone should i buy,out_of_scope
+give me a diet plan for weight loss,out_of_scope
+how can i learn guitar,out_of_scope
+write a romantic poem for my girlfriend,out_of_scope
+tell me about tourist places in paris,out_of_scope
+how can i fix my car engine,out_of_scope
+what are the best video games now,out_of_scope
+how do i become a youtuber,out_of_scope
+give me tips to grow on instagram,out_of_scope
+how can i start a business,out_of_scope
+tell me the latest bollywood news,out_of_scope
+what is the best laptop under 1000,out_of_scope
+explain black holes in simple terms,out_of_scope
+i do not want to live anymore,serious_issue
+i am thinking about killing myself,serious_issue
+sometimes i want to end my life,serious_issue
+i feel like hurting myself,serious_issue
+i want to die everything is pointless,serious_issue
+i am planning to overdose on pills,serious_issue
+i think everyone would be better without me,serious_issue
+i am really close to self harm,serious_issue
+i have been looking up ways to kill myself,serious_issue
+i cut myself because i cannot handle the pain,serious_issue
+i want to kill someone who hurt me,serious_issue
+i feel like hurting other people,serious_issue
+i am afraid i might do something violent,serious_issue
+i am having thoughts of hurting my classmates,serious_issue
+i feel completely hopeless and want to disappear,serious_issue
+life is meaningless and i want to give up,serious_issue
+i do not see any reason to keep going,serious_issue
+i feel trapped and i want to escape forever,serious_issue
+i am in a really dark place and thinking of ending it,serious_issue
+i cannot control my anger and i might hurt someone,serious_issue
+i keep imagining jumping in front of a train,serious_issue
+i have written a note for my family to say goodbye,serious_issue
+i am scared of my own thoughts they are very dark,serious_issue
+i feel so hopeless that death seems like the only option,serious_issue
+i want to make the people who hurt me suffer physically,serious_issue
+i wish i could just disappear forever,serious_issue
+i am tired of everything and want it to end,serious_issue
+my mind keeps telling me to end my life,serious_issue
+i feel like i am a danger to myself,serious_issue
+i feel like i am a danger to others,serious_issue
+i am seriously thinking about suicide,serious_issue
+i want to stop existing,serious_issue
+i cannot handle this pain anymore,serious_issue
+i keep planning different ways to end it,serious_issue
+death feels like the only solution for me,serious_issue

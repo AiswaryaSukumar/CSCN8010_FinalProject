@@ -1,18 +1,36 @@
-# intent_classifier.py
-# HYBRID INTENT CLASSIFIER (HF + OpenAI)
+"""
+Intent classifier using our own deep learning model + HF embeddings.
+
+- Encodes queries with SentenceTransformer (encode_texts)
+- Uses a small MLP trained on 4 labels:
+    student_affairs, small_talk, out_of_scope, serious_issue
+- Returns: {"label": <str>, "score": <float dummy=1.0>}
+"""
 
 import logging
-from functools import lru_cache
-from openai import OpenAI
-from src.hf_models import hf_predict_intent
 import os
-from dotenv import load_dotenv
+import pickle
+from functools import lru_cache
+from pathlib import Path
 
-load_dotenv()  # looks for .env in current or parent dirs
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-                
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+# IMPORTANT: this is the HF encoder we used in training
+# If your module name is different, change this import.
+from src.embedding_hf import encode_texts
+
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------
+# Paths (project-root relative)
+# ---------------------------------------------------------------------
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+MODELS_DIR = PROJECT_ROOT / "models"
+
+MODEL_PATH = MODELS_DIR / "intent_classifier_best.pt"
+ENCODER_PATH = MODELS_DIR / "intent_label_encoder.pkl"
 
 INTENT_LABELS = [
     "student_affairs",
@@ -21,63 +39,103 @@ INTENT_LABELS = [
     "serious_issue",
 ]
 
-# HF → Custom Intent Mapping
-HF_TO_LOCAL = {
-    "greeting": "small_talk",
-    "goodbye": "small_talk",
-    "affirm": "small_talk",
-    "deny": "small_talk",
-    "question": "student_affairs",
-    "help": "student_affairs",
-    "other": "out_of_scope"
-}
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+_model = None
+_label_encoder = None
 
 
-# ============================================================
-# Hybrid Intent Classifier
-# ============================================================
+# ---------------------------------------------------------------------
+# MLP model definition – must match what you used during training
+# ---------------------------------------------------------------------
+class IntentClassifierMLP(nn.Module):
+    def __init__(self, input_dim: int = 384, hidden_dim: int = 128, output_dim: int = 4):
+        super().__init__()
+        self.fc1 = nn.Linear(input_dim, hidden_dim)
+        self.dropout = nn.Dropout(0.3)
+        self.fc2 = nn.Linear(hidden_dim, output_dim)
 
-@lru_cache(maxsize=100)
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        x = self.dropout(x)
+        return self.fc2(x)
+
+
+# ---------------------------------------------------------------------
+# Lazy loading of model + label encoder
+# ---------------------------------------------------------------------
+def _load_model_and_encoder():
+    global _model, _label_encoder
+
+    if _model is not None and _label_encoder is not None:
+        return
+
+    if not MODEL_PATH.exists():
+        raise FileNotFoundError(f"Intent model not found at: {MODEL_PATH}")
+
+    if not ENCODER_PATH.exists():
+        raise FileNotFoundError(f"Label encoder not found at: {ENCODER_PATH}")
+
+    # Load label encoder
+    with open(ENCODER_PATH, "rb") as f:
+        _label_encoder = pickle.load(f)
+
+    # Build model and load weights
+    _model = IntentClassifierMLP(output_dim=len(INTENT_LABELS))
+    state = torch.load(MODEL_PATH, map_location=device)
+    _model.load_state_dict(state)
+    _model.to(device)
+    _model.eval()
+
+    logger.info("Intent classifier model + label encoder loaded successfully.")
+
+
+# ---------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------
+@lru_cache(maxsize=256)
 def classify_intent(text: str):
-    # ----------------------------------------------------
-    # 1) TRY HUGGINGFACE FIRST (OFFLINE + FAST)
-    # ----------------------------------------------------
-    try:
-        hf_out = hf_predict_intent(text)
-        if hf_out is not None and hf_out["score"] >= 0.85:
-            mapped = HF_TO_LOCAL.get(hf_out["label"], "out_of_scope")
-            logger.info(f"[HF Intent] {text} → {mapped} ({hf_out['score']:.2f})")
-            return {"label": mapped, "score": hf_out["score"]}
-    except Exception as e:
-        logger.error(f"HF intent error: {e}")
+    """
+    Classify a single user query into one of:
+    student_affairs, small_talk, out_of_scope, serious_issue
+    """
+    _load_model_and_encoder()
 
-    # ----------------------------------------------------
-    # 2) FALLBACK TO OPENAI LLM (Gold Standard)
-    # ----------------------------------------------------
-    logger.info("[LLM Intent Fallback Triggered]")
+    # 1) Encode text with HF encoder -> numpy array shape (1, 384)
+    emb = encode_texts([text])
+    tensor = torch.tensor(emb, dtype=torch.float32, device=device)
 
-    system_msg = """
-You are an intent classifier for a student affairs assistant.
-Decide ONE label only:
-student_affairs, small_talk, out_of_scope, serious_issue.
-Respond ONLY with the label.
-"""
+    # 2) Forward pass
+    with torch.no_grad():
+        logits = _model(tensor)
+        pred_idx = torch.argmax(logits, dim=1).item()
 
-    try:
-        resp = client.chat.completions.create(
-            model="gpt-4.1-mini",
-            messages=[
-                {"role": "system", "content": system_msg},
-                {"role": "user", "content": text},
-            ],
-            temperature=0.0,
-            max_tokens=10,
-        )
-        label = resp.choices[0].message.content.strip().lower()
-        if label not in INTENT_LABELS:
-            label = "out_of_scope"
-    except Exception as e:
-        logger.error(f"LLM intent classification failed: {e}")
+    # 3) Map back to string label via label encoder
+    label = _label_encoder.inverse_transform([pred_idx])[0]
+
+    # Safety: if label is something unexpected, fall back to out_of_scope
+    if label not in INTENT_LABELS:
+        logger.warning(f"Unknown intent label from encoder: {label}. Falling back to 'out_of_scope'.")
         label = "out_of_scope"
 
     return {"label": label, "score": 1.0}
+
+
+# ---------------------------------------------------------------------
+# Simple manual test:  python -m src.intent_classifier
+# ---------------------------------------------------------------------
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    print("PROJECT_ROOT:", PROJECT_ROOT)
+    print("MODEL_PATH  :", MODEL_PATH)
+    print("ENCODER_PATH:", ENCODER_PATH)
+
+    _load_model_and_encoder()
+    print("Type a query (or 'quit'):")
+
+    while True:
+        q = input("> ").strip()
+        if q.lower() in {"quit", "exit"}:
+            break
+        result = classify_intent(q)
+        print(result)
